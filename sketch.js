@@ -1,28 +1,20 @@
 // ============================================================
-// Week 5 Example 1 — Sprite Sheet Animation
+// Week 5 Example 1 — Sprite Sheet Animation (Reorganized Grid)
 // ============================================================
 
 // ------------------------------------------------------------
 // SPRITE CONFIGURATION
-// Adjust these values to match your sprite sheet.
-//
-// frameWidth  — width of one frame in pixels
-// frameHeight — height of one frame in pixels
-// numFrames   — number of frames per row
-// animSpeed   — how many draw() frames per sprite frame
-//               lower = faster animation, higher = slower
-// scale       — how much to scale the sprite when drawing
-//               1 = original size, 2 = double, 3 = triple
+// Since our setup function will dynamically rebuild the layout
+// into a clean 4-row, 2-column sheet, we can use simple row indices!
 // ------------------------------------------------------------
 const SPRITE = {
-  frameWidth:  75,  // width of one frame  (300px / 4 frames)
-  frameHeight: 150, // height of one frame (600px / 4 rows)
-  numFrames:   4,   // frames per row
-  animSpeed:   20,  // draw() frames per sprite frame (higher = slower)
-  scale:       0.5, // draw at half original size
+  frameWidth:  100, // Width of one Ness frame
+  frameHeight: 130, // Height of one Ness frame
+  numFrames:   2,   // 2 alternating frames per row loop
+  animSpeed:   10,  // Dropped to 15 for snappier 2-frame steps
+  scale:       0.5,   // Set to 1 for full size (can adjust to scale up/down)
 
-  // Row index for each direction
-  // Change these if your sheet has a different row order
+  // Clean uniform rows mapping after our setup translation
   rows: {
     down:  0,
     up:    1,
@@ -30,63 +22,79 @@ const SPRITE = {
     left:  3,
   },
 
-  // Fine-tune the source position for each direction
-  // Adjust x to shift left/right, y to shift up/down
-  // Positive y moves the source window down into the sheet
-  // Try values like 5, 10, 15 to line up your frames
+  // No offsets needed because this rip aligns beautifully
   offsets: {
-    down:  { x: 0, y: 0  },
-    up:    { x: 0, y: 0  },
-    right: { x: 0, y: 10 },
-    left:  { x: 0, y: 20 },
+    down:  { x: -7, y: 0 },
+    up:    { x: -3, y: 0 },
+    right: { x: -4, y: 0 },
+    left:  { x: -3, y: 0 },
   },
 };
 
 // ------------------------------------------------------------
 // PLAYER
-// x, y track the centre position on the canvas.
-// Animation state is stored alongside position so everything
-// about the player is in one place.
 // ------------------------------------------------------------
 let player = {
-  x: 400, // centre x position on canvas
-  y: 225, // centre y position on canvas
-  speed: 3, // pixels moved per frame
+  x: 400, 
+  y: 225, 
+  speed: 3, 
 
   // Animation state
-  currentFrame: 0,      // which frame in the row (0 to numFrames-1)
-  frameTimer:   0,      // counts up to animSpeed then advances frame
-  direction:    "down", // current facing direction
-  isMoving:     false,  // only animate when moving
+  currentFrame: 0,      
+  frameTimer:   0,      
+  direction:    "down", 
+  isMoving:     false,  
 };
 
-let characterSheet; // the loaded sprite sheet image
+let originalSheet;  // Stores the raw asset unedited
+let characterSheet; // The newly constructed 4x2 offscreen graphics canvas
 
 // ============================================================
 // preload()
-// Runs once before setup(). Always load images here so they
-// are ready before the sketch tries to use them.
 // ============================================================
 function preload() {
-  // loadImage() loads the sprite sheet before setup() runs
-  characterSheet = loadImage("assets/images/walking.png");
+  originalSheet = loadImage("assets/images/nesswalking.png");
 }
 
 // ============================================================
 // setup()
-// Runs once at the very start of the sketch.
-// imageMode(CENTER) makes image() draw from the centre point
-// rather than the top-left corner.
+// Creates the canvas and maps the custom left-half pieces 
+// into a standard stacked row architecture.
 // ============================================================
 function setup() {
   createCanvas(800, 450);
   imageMode(CENTER);
+
+  // Calculate true frame size dynamically based on the file dimensions
+  let w = originalSheet.width / 8;
+  let h = originalSheet.height / 2;
+
+  SPRITE.frameWidth = w;
+  SPRITE.frameHeight = h;
+
+  // Create the offscreen graphics canvas buffer
+  characterSheet = createGraphics(w * 2, h * 4);
+
+  // FINE-TUNING ALIGNMENT:
+  // We shift the destination Y (dy) down by 6 pixels for Rows 0 and 2 
+  // to match the lower resting position of Rows 1 and 3.
+  let shiftY = 12; 
+
+  // Row 0: Down (Shifted down by shiftY)
+  characterSheet.copy(originalSheet, 0 * w, 0 * h, w * 2, h, 0 * w, (0 * h) + shiftY, w * 2, h);
+  
+  // Row 1: Up (Kept at its original natural lower height)
+  characterSheet.copy(originalSheet, 0 * w, 1 * h, w * 2, h, 0 * w, 1 * h, w * 2, h);
+  
+  // Row 2: Right (Shifted down by shiftY)
+  characterSheet.copy(originalSheet, 2 * w, 0 * h, w * 2, h, 0 * w, (2 * h) + shiftY, w * 2, h);
+  
+  // Row 3: Left (Kept at its original natural lower height)
+  characterSheet.copy(originalSheet, 2 * w, 1 * h, w * 2, h, 0 * w, 3 * h, w * 2, h);
 }
 
 // ============================================================
 // draw()
-// Runs repeatedly in a loop after setup() finishes.
-// Each frame: handle input, advance animation, draw everything.
 // ============================================================
 function draw() {
   background(30);
@@ -99,11 +107,6 @@ function draw() {
 
 // ------------------------------------------------------------
 // handleInput()
-// Moves the player and sets the correct facing direction.
-// Each direction is checked independently so diagonal
-// movement works naturally — holding W and D moves up-right.
-// The last key held wins for direction (D overrides W if both
-// are held and D is checked last).
 // ------------------------------------------------------------
 function handleInput() {
   player.isMoving = false;
@@ -129,8 +132,7 @@ function handleInput() {
     player.isMoving = true;
   }
 
-  // Keep player inside the canvas
-  // hw and hh are the half-dimensions of the drawn sprite
+  // Keep player inside canvas boundary constraints
   let hw = (SPRITE.frameWidth  * SPRITE.scale) / 2;
   let hh = (SPRITE.frameHeight * SPRITE.scale) / 2;
   player.x = constrain(player.x, hw, width  - hw);
@@ -139,24 +141,16 @@ function handleInput() {
 
 // ------------------------------------------------------------
 // animateSprite()
-// Advances the animation frame at a controlled speed.
-// frameTimer counts up every draw() call.
-// When it reaches animSpeed, we move to the next frame.
-// Only animates when the player is moving — stays on frame 0
-// when idle so the character stands still.
 // ------------------------------------------------------------
 function animateSprite() {
   if (player.isMoving) {
     player.frameTimer++;
 
-    // When the timer reaches animSpeed, advance to the next frame
-    // % numFrames wraps back to 0 after the last frame
     if (player.frameTimer >= SPRITE.animSpeed) {
       player.frameTimer = 0;
       player.currentFrame = (player.currentFrame + 1) % SPRITE.numFrames;
     }
   } else {
-    // Reset to standing frame when not moving
     player.currentFrame = 0;
     player.frameTimer   = 0;
   }
@@ -164,47 +158,31 @@ function animateSprite() {
 
 // ------------------------------------------------------------
 // drawCharacter()
-// Draws one frame from the sprite sheet using image() with
-// source rectangle parameters.
-//
-// image(img, dx, dy, dw, dh, sx, sy, sw, sh)
-//   dx, dy — where to draw on the canvas (destination centre)
-//   dw, dh — how large to draw it (destination size)
-//   sx, sy — where to start reading from the sprite sheet
-//   sw, sh — how many pixels to read from the sheet
-//
-// sx slides along the row by multiplying frame number by
-// frameWidth — each frame is one frameWidth apart.
-// sy selects the row by multiplying row index by frameHeight.
+// Uses standard grid sampling because our sheet was flattened to 4x2
 // ------------------------------------------------------------
 function drawCharacter() {
-  // Get the correct row and offset for the current direction
   let row    = SPRITE.rows[player.direction];
   let offset = SPRITE.offsets[player.direction];
 
-  // Source position on the sprite sheet (with offset applied)
+  // Map perfectly over the generated clean 4x2 coordinate tracking system
   let sx = player.currentFrame * SPRITE.frameWidth  + offset.x;
   let sy = row                 * SPRITE.frameHeight + offset.y;
 
-  // Draw size (original frame size multiplied by scale)
   let dw = SPRITE.frameWidth  * SPRITE.scale;
   let dh = SPRITE.frameHeight * SPRITE.scale;
 
   image(
-    characterSheet,
-    player.x, player.y, // destination centre position
-    dw, dh,             // destination size (scaled)
-    sx, sy,             // source position on sprite sheet
-    SPRITE.frameWidth,  // source width  (one frame)
-    SPRITE.frameHeight, // source height (one row)
+    characterSheet, // Reads directly from the constructed canvas graphics buffer
+    player.x, player.y, 
+    dw, dh,             
+    sx, sy,             
+    SPRITE.frameWidth,  
+    SPRITE.frameHeight  
   );
 }
 
 // ------------------------------------------------------------
 // drawHUD()
-// HUD = Heads Up Display.
-// Shows controls and current animation info for reference.
-// The frame/row readout is useful when tuning a new sprite sheet.
 // ------------------------------------------------------------
 function drawHUD() {
   noStroke();
@@ -214,7 +192,6 @@ function drawHUD() {
   textFont("monospace");
   text("Move: WASD", 16, 24);
 
-  // Debug info — useful when aligning frames on a new sheet
   fill(100);
   textSize(11);
   text("Direction: " + player.direction, 16, 44);
